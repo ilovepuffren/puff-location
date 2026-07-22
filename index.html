@@ -44,7 +44,7 @@
       <p class="tagline">一起尋找美好的活動地點</p>
     </header>
     <main>
-      <section id="loading" class="loader" aria-live="polite"><div class="spinner" aria-hidden="true"></div><span>正在載入活動資料…</span></section>
+      <section id="loading" class="loader" aria-live="polite"><div class="spinner" aria-hidden="true"></div><span>載入營業位置中...</span></section>
       <section id="city-view" hidden>
         <h2 class="step">請選擇縣市</h2>
         <p class="hint">選擇縣市後，即可查看行政區</p>
@@ -70,6 +70,7 @@
   </div>
   <script>
     const DATA_URL = 'https://script.google.com/macros/s/AKfycbzESN-Hx0Nc1x0XWs-ASfEnjIORJ43TwTdmOBiNULBrtRvXlJBRm3aWz3FYXrwJdwrU/exec';
+    const STORAGE_KEY = 'puff-ren-locations-v1';
     const views = ['loading', 'city-view', 'district-view', 'results-view', 'error-view'];
     let records = [], selectedCity = '';
     const $ = (id) => document.getElementById(id);
@@ -91,7 +92,17 @@
       show('results-view');
     }
     function normalize(data) { if (!Array.isArray(data)) throw new TypeError('回傳內容不是陣列'); return data.map((item) => ({ city: String(item.city || '').trim(), district: String(item.district || '').trim(), date: String(item.date || '').trim(), week: String(item.week || '').trim(), address: String(item.address || '').trim() })).filter((item) => item.city && item.district); }
-    async function load() { show('loading'); try { const response = await fetch(DATA_URL, { cache: 'no-store' }); if (!response.ok) throw new Error(`HTTP ${response.status}`); records = normalize(await response.json()); if (!records.length) throw new Error('沒有可顯示資料'); renderCities(); } catch (error) { console.error('資料載入失敗：', error); show('error-view'); } }
+    function readCache() { try { const saved = localStorage.getItem(STORAGE_KEY); return saved ? normalize(JSON.parse(saved)) : []; } catch (error) { console.warn('無法讀取快取：', error); return []; } }
+    function writeCache(data) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (error) { console.warn('無法寫入快取：', error); } }
+    async function fetchLatest() { const response = await fetch(DATA_URL, { cache: 'no-store' }); if (!response.ok) throw new Error(`HTTP ${response.status}`); const latest = normalize(await response.json()); if (!latest.length) throw new Error('沒有可顯示資料'); writeCache(latest); return latest; }
+    async function refreshInBackground() { try { records = await fetchLatest(); } catch (error) { console.warn('背景更新失敗，繼續使用快取資料：', error); } }
+    async function load() {
+      const cached = readCache();
+      if (cached.length) { records = cached; renderCities(); refreshInBackground(); return; }
+      show('loading');
+      try { records = await fetchLatest(); renderCities(); }
+      catch (error) { console.error('資料載入失敗：', error); show('error-view'); }
+    }
     document.querySelectorAll('[data-back]').forEach((el) => el.addEventListener('click', () => el.dataset.back === 'city' ? renderCities() : renderDistricts(selectedCity)));
     $('retry').addEventListener('click', load); load();
   </script>
