@@ -85,8 +85,8 @@
     <footer>資料由活動主辦單位提供</footer>
   </div>
   <script>
-    const DATA_URL = 'https://script.google.com/macros/s/AKfycbzESN-Hx0Nc1x0XWs-ASfEnjIORJ43TwTdmOBiNULBrtRvXlJBRm3aWz3FYXrwJdwrU/exec';
-    const STORAGE_KEY = 'puff-ren-locations-v1';
+    const DATA_URL = 'https://script.google.com/macros/s/AKfycbxiA6kvUqAr_dvcFippUhlO2Am--mBo9M3D8f40j5i-uu4vfk76XdF9xsmEIvjxKmck/exec';
+    const STORAGE_KEY = 'puff-ren-locations-v2';
     const views = ['loading', 'city-view', 'district-view', 'results-view', 'error-view'];
     let records = [], selectedCity = '', loadingTimer;
     const $ = (id) => document.getElementById(id);
@@ -96,9 +96,32 @@
     function button(label, handler) { const el = document.createElement('button'); el.type = 'button'; el.textContent = label; el.addEventListener('click', () => { haptic(); handler(); }); return el; }
     function renderCities() { const container = $('city-buttons'); container.replaceChildren(...unique(records.map((r) => r.city)).map((city) => button(city, () => renderDistricts(city)))); show('city-view'); }
     function renderDistricts(city) { selectedCity = city; const districts = unique(records.filter((r) => r.city === city).map((r) => r.district)); $('district-title').textContent = city; const container = $('district-buttons'); container.replaceChildren(...districts.map((district) => button(district, () => renderResults(city, district)))); show('district-view'); }
-    function dateParts(value) { if (value instanceof Date && !Number.isNaN(value.getTime())) return { year: value.getUTCFullYear(), month: value.getUTCMonth() + 1, day: value.getUTCDate() }; const parts = String(value || '').match(/(\d{3,4})\D+(\d{1,2})\D+(\d{1,2})/); if (!parts) return null; return { year: Number(parts[1]) < 1911 ? Number(parts[1]) + 1911 : Number(parts[1]), month: Number(parts[2]), day: Number(parts[3]) }; }
-    function dateStamp(value) { const parts = dateParts(value); return parts ? Date.UTC(parts.year, parts.month - 1, parts.day) : Number.MAX_SAFE_INTEGER; }
-    function formatDate(value) { const parts = dateParts(value); return parts ? `${parts.month}月${parts.day}日` : '日期未提供'; }
+    function dateParts(value) {
+      const d = new Date(value);
+
+      if (!isNaN(d.getTime())) {
+        return {
+          year: d.getFullYear(),
+          month: d.getMonth() + 1,
+          day: d.getDate()
+        };
+      }
+
+      return null;
+    }
+
+    function dateStamp(value) {
+      const d = new Date(value);
+      return isNaN(d.getTime()) ? Number.MAX_SAFE_INTEGER : d.getTime();
+    }
+
+    function formatDate(value) {
+      const d = new Date(value);
+
+      if (isNaN(d.getTime())) return "日期未提供";
+
+      return `${d.getMonth() + 1}月${d.getDate()}日`;
+    }
     function renderResults(city, district) {
       const matches = records.filter((r) => r.city === city && r.district === district).sort((a, b) => dateStamp(a.date) - dateStamp(b.date));
       $('results-title').textContent = `${city}・${district}`;
@@ -117,7 +140,24 @@
     function writeCache(data) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (error) { console.warn('無法寫入快取：', error); } }
     function startLoadingProgress() { let progress = 0; const label = $('loading-progress'); clearInterval(loadingTimer); label.textContent = '0%'; loadingTimer = setInterval(() => { progress = Math.min(progress + Math.max(1, Math.ceil((92 - progress) / 9)), 92); label.textContent = `${progress}%`; }, 120); }
     function completeLoadingProgress() { clearInterval(loadingTimer); $('loading-progress').textContent = '100%'; }
-    async function fetchLatest() { const response = await fetch(DATA_URL, { cache: 'no-store' }); if (!response.ok) throw new Error(`HTTP ${response.status}`); const latest = normalize(await response.json()); if (!latest.length) throw new Error('沒有可顯示資料'); writeCache(latest); return latest; }
+    function fetchJsonp() {
+      return new Promise((resolve, reject) => {
+        const callbackName = `puffRenJsonp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const script = document.createElement('script');
+        const timeout = setTimeout(() => cleanup(new Error('JSONP 請求逾時')), 12000);
+        function cleanup(error, data) { clearTimeout(timeout); script.remove(); delete window[callbackName]; error ? reject(error) : resolve(data); }
+        window[callbackName] = (data) => cleanup(null, data);
+        script.onerror = () => cleanup(new Error('JSONP 請求失敗'));
+        script.src = `${DATA_URL}${DATA_URL.includes('?') ? '&' : '?'}prefix=${encodeURIComponent(callbackName)}`;
+        document.head.append(script);
+      });
+    }
+    async function fetchLatest() {
+      let payload;
+      try { const response = await fetch(DATA_URL, { cache: 'no-store' }); if (!response.ok) throw new Error(`HTTP ${response.status}`); payload = await response.json(); }
+      catch (fetchError) { payload = await fetchJsonp(); }
+      const latest = normalize(payload); if (!latest.length) throw new Error('沒有可顯示資料'); writeCache(latest); return latest;
+    }
     async function refreshInBackground() { try { records = await fetchLatest(); } catch (error) { console.warn('背景更新失敗，繼續使用快取資料：', error); } }
     async function load() {
       const cached = readCache();
