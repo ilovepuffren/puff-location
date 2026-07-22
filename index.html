@@ -111,16 +111,15 @@
     }
 
     function dateStamp(value) {
-      const d = new Date(value);
-      return isNaN(d.getTime()) ? Number.MAX_SAFE_INTEGER : d.getTime();
+      const m = String(value).match(/^(\d+)月(\d+)日$/);
+
+      if (!m) return Number.MAX_SAFE_INTEGER;
+
+      return Number(m[1]) * 100 + Number(m[2]);
     }
 
     function formatDate(value) {
-      const d = new Date(value);
-
-      if (isNaN(d.getTime())) return "日期未提供";
-
-      return `${d.getMonth() + 1}月${d.getDate()}日`;
+      return value || "日期未提供";
     }
     function renderResults(city, district) {
       const matches = records.filter((r) => r.city === city && r.district === district).sort((a, b) => dateStamp(a.date) - dateStamp(b.date));
