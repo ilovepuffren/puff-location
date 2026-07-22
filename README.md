@@ -1,0 +1,1 @@
+Upload these files to GitHub repository, enable GitHub Pages from Settings > Pages > Deploy from branch > main /(root).
