@@ -1,1 +1,99 @@
-<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>找愛泡芙人</title><link rel="stylesheet" href="style.css"></head><body><div class="wrap"><h2>請選擇縣市</h2><select id="city"></select><h2>請選擇行政區</h2><select id="district"></select><div id="results"></div></div><script src="script.js"></script></body></html>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="我愛泡芙人｜活動地點查詢">
+  <title>我愛泡芙人</title>
+  <style>
+    :root { --milk-tea: #ead7bc; --milk-tea-light: #f8f0e5; --coffee: #543621; --coffee-hover: #724a2e; --ink: #38261a; --muted: #806b5a; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; min-height: 100vh; color: var(--ink); font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif; background: radial-gradient(circle at 50% -5%, #fffdf9 0, var(--milk-tea-light) 43%, var(--milk-tea) 100%); }
+    .page { width: min(100%, 680px); margin: 0 auto; padding: 32px 16px 44px; }
+    .brand { text-align: center; margin: 0 0 30px; }
+    .logo { display: block; width: min(100%, 300px); height: auto; margin: 0 auto; }
+    .tagline { margin: 10px 0 0; font-size: 14px; letter-spacing: .13em; color: var(--muted); }
+    main { padding: 22px 17px; background: rgba(255,255,255,.66); border: 1px solid rgba(255,255,255,.85); border-radius: 24px; box-shadow: 0 14px 32px rgba(84,54,33,.11); }
+    .step { margin: 0 0 15px; font-size: 21px; text-align: center; color: var(--coffee); }
+    .hint, .status { margin: 0 0 18px; color: var(--muted); font-size: 14px; text-align: center; }
+    .button-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    button { appearance: none; min-height: 48px; padding: 10px 12px; border: 0; border-radius: 13px; color: #fff; background: var(--coffee); font: inherit; font-weight: 700; cursor: pointer; transition: background .18s, transform .18s, box-shadow .18s; }
+    button:hover, button:focus-visible { background: var(--coffee-hover); box-shadow: 0 5px 14px rgba(84,54,33,.2); outline: none; transform: translateY(-1px); }
+    .back { display: block; margin: 0 0 18px; min-height: auto; padding: 6px 0; color: var(--coffee); background: transparent; text-decoration: underline; text-underline-offset: 3px; box-shadow: none; }
+    .back:hover, .back:focus-visible { color: var(--coffee-hover); background: transparent; box-shadow: none; transform: none; }
+    .cards { display: grid; gap: 13px; }
+    .card { padding: 18px; border-radius: 17px; background: #fff; box-shadow: 0 5px 17px rgba(84,54,33,.09); }
+    .card p { margin: 0; line-height: 1.7; }
+    .card p + p { margin-top: 8px; }
+    .card a { color: var(--coffee); font-weight: 700; word-break: break-word; text-underline-offset: 3px; }
+    .empty { padding: 24px 10px; color: var(--muted); text-align: center; }
+    .loader { display: grid; place-items: center; gap: 12px; min-height: 160px; color: var(--muted); }
+    .spinner { width: 30px; height: 30px; border: 4px solid #dfc8a9; border-top-color: var(--coffee); border-radius: 50%; animation: spin .75s linear infinite; }
+    .error { padding: 18px; color: var(--coffee); text-align: center; background: #fff7f0; border-radius: 14px; }
+    .retry { margin-top: 13px; }
+    footer { margin-top: 23px; color: var(--muted); font-size: 12px; text-align: center; }
+    [hidden] { display: none !important; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (min-width: 520px) { .page { padding: 48px 24px 56px; } main { padding: 28px; } .button-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="brand">
+      <img class="logo" src="logo-02.png" alt="我愛泡芙人 PUFF REN">
+      <p class="tagline">一起尋找美好的活動地點</p>
+    </header>
+    <main>
+      <section id="loading" class="loader" aria-live="polite"><div class="spinner" aria-hidden="true"></div><span>正在載入活動資料…</span></section>
+      <section id="city-view" hidden>
+        <h2 class="step">請選擇縣市</h2>
+        <p class="hint">選擇縣市後，即可查看行政區</p>
+        <div id="city-buttons" class="button-grid"></div>
+      </section>
+      <section id="district-view" hidden>
+        <button class="back" type="button" data-back="city">← 返回縣市</button>
+        <h2 id="district-title" class="step"></h2>
+        <p class="hint">請選擇行政區</p>
+        <div id="district-buttons" class="button-grid"></div>
+      </section>
+      <section id="results-view" hidden>
+        <button class="back" type="button" data-back="district">← 返回行政區</button>
+        <h2 id="results-title" class="step"></h2>
+        <div id="cards" class="cards"></div>
+      </section>
+      <section id="error-view" hidden class="error" role="alert">
+        <div>資料載入失敗，請確認網路連線後再試一次。</div>
+        <button id="retry" class="retry" type="button">重新載入</button>
+      </section>
+    </main>
+    <footer>資料由活動主辦單位提供</footer>
+  </div>
+  <script>
+    const DATA_URL = 'https://script.google.com/macros/s/AKfycbzESN-Hx0Nc1x0XWs-ASfEnjIORJ43TwTdmOBiNULBrtRvXlJBRm3aWz3FYXrwJdwrU/exec';
+    const views = ['loading', 'city-view', 'district-view', 'results-view', 'error-view'];
+    let records = [], selectedCity = '';
+    const $ = (id) => document.getElementById(id);
+    const show = (id) => views.forEach((view) => $(view).hidden = view !== id);
+    const unique = (items) => [...new Set(items.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+    function button(label, handler) { const el = document.createElement('button'); el.type = 'button'; el.textContent = label; el.addEventListener('click', handler); return el; }
+    function renderCities() { const container = $('city-buttons'); container.replaceChildren(...unique(records.map((r) => r.city)).map((city) => button(city, () => renderDistricts(city)))); show('city-view'); }
+    function renderDistricts(city) { selectedCity = city; const districts = unique(records.filter((r) => r.city === city).map((r) => r.district)); $('district-title').textContent = city; const container = $('district-buttons'); container.replaceChildren(...districts.map((district) => button(district, () => renderResults(city, district)))); show('district-view'); }
+    function renderResults(city, district) {
+      const matches = records.filter((r) => r.city === city && r.district === district);
+      $('results-title').textContent = `${city}・${district}`;
+      const cards = $('cards');
+      cards.replaceChildren(...matches.map((r) => {
+        const card = document.createElement('article'); card.className = 'card';
+        const date = document.createElement('p'); date.textContent = `📅 ${r.date || '日期未提供'}${r.week ? `（${r.week}）` : ''}`;
+        const address = document.createElement('p'); const link = document.createElement('a'); link.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address || '')}`; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = `📍 ${r.address || '地址未提供'}`; address.append(link); card.append(date, address); return card;
+      }));
+      if (!matches.length) cards.innerHTML = '<p class="empty">目前沒有符合的資料。</p>';
+      show('results-view');
+    }
+    function normalize(data) { if (!Array.isArray(data)) throw new TypeError('回傳內容不是陣列'); return data.map((item) => ({ city: String(item.city || '').trim(), district: String(item.district || '').trim(), date: String(item.date || '').trim(), week: String(item.week || '').trim(), address: String(item.address || '').trim() })).filter((item) => item.city && item.district); }
+    async function load() { show('loading'); try { const response = await fetch(DATA_URL, { cache: 'no-store' }); if (!response.ok) throw new Error(`HTTP ${response.status}`); records = normalize(await response.json()); if (!records.length) throw new Error('沒有可顯示資料'); renderCities(); } catch (error) { console.error('資料載入失敗：', error); show('error-view'); } }
+    document.querySelectorAll('[data-back]').forEach((el) => el.addEventListener('click', () => el.dataset.back === 'city' ? renderCities() : renderDistricts(selectedCity)));
+    $('retry').addEventListener('click', load); load();
+  </script>
+</body>
+</html>
