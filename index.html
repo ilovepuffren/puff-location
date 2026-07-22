@@ -96,7 +96,9 @@
     function button(label, handler) { const el = document.createElement('button'); el.type = 'button'; el.textContent = label; el.addEventListener('click', () => { haptic(); handler(); }); return el; }
     function renderCities() { const container = $('city-buttons'); container.replaceChildren(...unique(records.map((r) => r.city)).map((city) => button(city, () => renderDistricts(city)))); show('city-view'); }
     function renderDistricts(city) { selectedCity = city; const districts = unique(records.filter((r) => r.city === city).map((r) => r.district)); $('district-title').textContent = city; const container = $('district-buttons'); container.replaceChildren(...districts.map((district) => button(district, () => renderResults(city, district)))); show('district-view'); }
-    function dateStamp(value) { const parts = String(value || '').match(/(\d{3,4})\D+(\d{1,2})\D+(\d{1,2})/); if (!parts) return Number.MAX_SAFE_INTEGER; const year = Number(parts[1]) < 1911 ? Number(parts[1]) + 1911 : Number(parts[1]); return Date.UTC(year, Number(parts[2]) - 1, Number(parts[3])); }
+    function dateParts(value) { if (value instanceof Date && !Number.isNaN(value.getTime())) return { year: value.getUTCFullYear(), month: value.getUTCMonth() + 1, day: value.getUTCDate() }; const parts = String(value || '').match(/(\d{3,4})\D+(\d{1,2})\D+(\d{1,2})/); if (!parts) return null; return { year: Number(parts[1]) < 1911 ? Number(parts[1]) + 1911 : Number(parts[1]), month: Number(parts[2]), day: Number(parts[3]) }; }
+    function dateStamp(value) { const parts = dateParts(value); return parts ? Date.UTC(parts.year, parts.month - 1, parts.day) : Number.MAX_SAFE_INTEGER; }
+    function formatDate(value) { const parts = dateParts(value); return parts ? `${parts.month}月${parts.day}日` : '日期未提供'; }
     function renderResults(city, district) {
       const matches = records.filter((r) => r.city === city && r.district === district).sort((a, b) => dateStamp(a.date) - dateStamp(b.date));
       $('results-title').textContent = `${city}・${district}`;
@@ -104,13 +106,13 @@
       cards.replaceChildren(...matches.map((r, index) => {
         const card = document.createElement('article'); card.className = 'card';
         card.style.setProperty('--delay', `${index * 80}ms`);
-        const date = document.createElement('p'); date.textContent = `📅 ${r.date || '日期未提供'}${r.week ? `（${r.week}）` : ''}`;
+        const date = document.createElement('p'); date.textContent = `📅 ${formatDate(r.date)}${r.week ? `（${r.week}）` : ''}`;
         const address = document.createElement('p'); const link = document.createElement('a'); link.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address || '')}`; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = `📍 ${r.address || '地址未提供'}`; address.append(link); card.append(date, address); return card;
       }));
       if (!matches.length) cards.innerHTML = '<p class="empty">目前沒有符合的資料。</p>';
       show('results-view');
     }
-    function normalize(data) { if (!Array.isArray(data)) throw new TypeError('回傳內容不是陣列'); return data.map((item) => ({ city: String(item.city || '').trim(), district: String(item.district || '').trim(), date: String(item.date || '').trim(), week: String(item.week || '').trim(), address: String(item.address || '').trim() })).filter((item) => item.city && item.district); }
+    function normalize(data) { if (!Array.isArray(data)) throw new TypeError('回傳內容不是陣列'); return data.map((item) => ({ city: String(item.city || '').trim(), district: String(item.district || '').trim(), date: item.date instanceof Date ? item.date : String(item.date || '').trim(), week: String(item.week || '').trim(), address: String(item.address || '').trim() })).filter((item) => item.city && item.district); }
     function readCache() { try { const saved = localStorage.getItem(STORAGE_KEY); return saved ? normalize(JSON.parse(saved)) : []; } catch (error) { console.warn('無法讀取快取：', error); return []; } }
     function writeCache(data) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (error) { console.warn('無法寫入快取：', error); } }
     function startLoadingProgress() { let progress = 0; const label = $('loading-progress'); clearInterval(loadingTimer); label.textContent = '0%'; loadingTimer = setInterval(() => { progress = Math.min(progress + Math.max(1, Math.ceil((92 - progress) / 9)), 92); label.textContent = `${progress}%`; }, 120); }
