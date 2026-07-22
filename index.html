@@ -10,6 +10,10 @@
   <meta property="og:image" content="https://ilovepuffren.github.io/puff-location/logo-02.png">
   <meta property="og:url" content="https://ilovepuffren.github.io/puff-location/">
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="我愛泡芙人">
+  <meta property="og:locale" content="zh_TW">
+  <meta name="apple-mobile-web-app-title" content="我愛泡芙人">
+  <link rel="icon" href="logo-02.png">
   <style>
     :root { --milk-tea: #ead7bc; --milk-tea-light: #f8f0e5; --coffee: #543621; --coffee-hover: #724a2e; --ink: #38261a; --muted: #806b5a; }
     * { box-sizing: border-box; }
@@ -23,22 +27,29 @@
     .hint, .status { margin: 0 0 18px; color: var(--muted); font-size: 14px; text-align: center; }
     .button-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     button { appearance: none; min-height: 48px; padding: 10px 12px; border: 0; border-radius: 13px; color: #fff; background: var(--coffee); font: inherit; font-weight: 700; cursor: pointer; transition: background .18s, transform .18s, box-shadow .18s; }
+    button:active { animation: button-press .2s ease-out; }
     button:hover, button:focus-visible { background: var(--coffee-hover); box-shadow: 0 5px 14px rgba(84,54,33,.2); outline: none; transform: translateY(-1px); }
     .back { display: block; margin: 0 0 18px; min-height: auto; padding: 6px 0; color: var(--coffee); background: transparent; text-decoration: underline; text-underline-offset: 3px; box-shadow: none; }
     .back:hover, .back:focus-visible { color: var(--coffee-hover); background: transparent; box-shadow: none; transform: none; }
     .cards { display: grid; gap: 13px; }
-    .card { padding: 18px; border-radius: 17px; background: #fff; box-shadow: 0 5px 17px rgba(84,54,33,.09); }
+    .card { padding: 18px; border-radius: 17px; background: #fff; box-shadow: 0 5px 17px rgba(84,54,33,.09); opacity: 0; animation: card-in .38s ease-out forwards; animation-delay: var(--delay, 0ms); }
     .card p { margin: 0; line-height: 1.7; }
     .card p + p { margin-top: 8px; }
     .card a { color: var(--coffee); font-weight: 700; word-break: break-word; text-underline-offset: 3px; }
     .empty { padding: 24px 10px; color: var(--muted); text-align: center; }
     .loader { display: grid; place-items: center; gap: 12px; min-height: 160px; color: var(--muted); }
-    .spinner { width: 30px; height: 30px; border: 4px solid #dfc8a9; border-top-color: var(--coffee); border-radius: 50%; animation: spin .75s linear infinite; }
+    .spinner { display: grid; place-items: center; width: 58px; height: 58px; border: 4px solid #dfc8a9; border-top-color: var(--coffee); border-radius: 50%; animation: spin .75s linear infinite; }
+    .spinner span { color: var(--coffee); font-size: 11px; font-weight: 800; }
     .error { padding: 18px; color: var(--coffee); text-align: center; background: #fff7f0; border-radius: 14px; }
     .retry { margin-top: 13px; }
     footer { margin-top: 23px; color: var(--muted); font-size: 12px; text-align: center; }
     [hidden] { display: none !important; }
+    .view-enter { animation: view-in .38s ease-out both; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes view-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes card-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes button-press { 50% { transform: scale(.96); } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; } }
     @media (min-width: 520px) { .page { padding: 48px 24px 56px; } main { padding: 28px; } .button-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   </style>
 </head>
@@ -49,7 +60,7 @@
       <p class="tagline">一起尋找美好的活動地點</p>
     </header>
     <main>
-      <section id="loading" class="loader" aria-live="polite"><div class="spinner" aria-hidden="true"></div><span>載入營業位置中...</span></section>
+      <section id="loading" class="loader" aria-live="polite"><div class="spinner" aria-hidden="true"><span id="loading-progress">0%</span></div><span>載入營業位置中...</span></section>
       <section id="city-view" hidden>
         <h2 class="step">請選擇縣市</h2>
         <p class="hint">選擇縣市後，即可查看行政區</p>
@@ -77,19 +88,22 @@
     const DATA_URL = 'https://script.google.com/macros/s/AKfycbzESN-Hx0Nc1x0XWs-ASfEnjIORJ43TwTdmOBiNULBrtRvXlJBRm3aWz3FYXrwJdwrU/exec';
     const STORAGE_KEY = 'puff-ren-locations-v1';
     const views = ['loading', 'city-view', 'district-view', 'results-view', 'error-view'];
-    let records = [], selectedCity = '';
+    let records = [], selectedCity = '', loadingTimer;
     const $ = (id) => document.getElementById(id);
-    const show = (id) => views.forEach((view) => $(view).hidden = view !== id);
+    function show(id) { views.forEach((view) => { $(view).hidden = view !== id; $(view).classList.remove('view-enter'); }); requestAnimationFrame(() => $(id).classList.add('view-enter')); }
     const unique = (items) => [...new Set(items.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-    function button(label, handler) { const el = document.createElement('button'); el.type = 'button'; el.textContent = label; el.addEventListener('click', handler); return el; }
+    function haptic() { if (typeof navigator.vibrate === 'function') navigator.vibrate(15); }
+    function button(label, handler) { const el = document.createElement('button'); el.type = 'button'; el.textContent = label; el.addEventListener('click', () => { haptic(); handler(); }); return el; }
     function renderCities() { const container = $('city-buttons'); container.replaceChildren(...unique(records.map((r) => r.city)).map((city) => button(city, () => renderDistricts(city)))); show('city-view'); }
     function renderDistricts(city) { selectedCity = city; const districts = unique(records.filter((r) => r.city === city).map((r) => r.district)); $('district-title').textContent = city; const container = $('district-buttons'); container.replaceChildren(...districts.map((district) => button(district, () => renderResults(city, district)))); show('district-view'); }
+    function dateStamp(value) { const parts = String(value || '').match(/(\d{3,4})\D+(\d{1,2})\D+(\d{1,2})/); if (!parts) return Number.MAX_SAFE_INTEGER; const year = Number(parts[1]) < 1911 ? Number(parts[1]) + 1911 : Number(parts[1]); return Date.UTC(year, Number(parts[2]) - 1, Number(parts[3])); }
     function renderResults(city, district) {
-      const matches = records.filter((r) => r.city === city && r.district === district);
+      const matches = records.filter((r) => r.city === city && r.district === district).sort((a, b) => dateStamp(a.date) - dateStamp(b.date));
       $('results-title').textContent = `${city}・${district}`;
       const cards = $('cards');
-      cards.replaceChildren(...matches.map((r) => {
+      cards.replaceChildren(...matches.map((r, index) => {
         const card = document.createElement('article'); card.className = 'card';
+        card.style.setProperty('--delay', `${index * 80}ms`);
         const date = document.createElement('p'); date.textContent = `📅 ${r.date || '日期未提供'}${r.week ? `（${r.week}）` : ''}`;
         const address = document.createElement('p'); const link = document.createElement('a'); link.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address || '')}`; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = `📍 ${r.address || '地址未提供'}`; address.append(link); card.append(date, address); return card;
       }));
@@ -99,17 +113,19 @@
     function normalize(data) { if (!Array.isArray(data)) throw new TypeError('回傳內容不是陣列'); return data.map((item) => ({ city: String(item.city || '').trim(), district: String(item.district || '').trim(), date: String(item.date || '').trim(), week: String(item.week || '').trim(), address: String(item.address || '').trim() })).filter((item) => item.city && item.district); }
     function readCache() { try { const saved = localStorage.getItem(STORAGE_KEY); return saved ? normalize(JSON.parse(saved)) : []; } catch (error) { console.warn('無法讀取快取：', error); return []; } }
     function writeCache(data) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (error) { console.warn('無法寫入快取：', error); } }
+    function startLoadingProgress() { let progress = 0; const label = $('loading-progress'); clearInterval(loadingTimer); label.textContent = '0%'; loadingTimer = setInterval(() => { progress = Math.min(progress + Math.max(1, Math.ceil((92 - progress) / 9)), 92); label.textContent = `${progress}%`; }, 120); }
+    function completeLoadingProgress() { clearInterval(loadingTimer); $('loading-progress').textContent = '100%'; }
     async function fetchLatest() { const response = await fetch(DATA_URL, { cache: 'no-store' }); if (!response.ok) throw new Error(`HTTP ${response.status}`); const latest = normalize(await response.json()); if (!latest.length) throw new Error('沒有可顯示資料'); writeCache(latest); return latest; }
     async function refreshInBackground() { try { records = await fetchLatest(); } catch (error) { console.warn('背景更新失敗，繼續使用快取資料：', error); } }
     async function load() {
       const cached = readCache();
       if (cached.length) { records = cached; renderCities(); refreshInBackground(); return; }
-      show('loading');
-      try { records = await fetchLatest(); renderCities(); }
-      catch (error) { console.error('資料載入失敗：', error); show('error-view'); }
+      show('loading'); startLoadingProgress();
+      try { records = await fetchLatest(); completeLoadingProgress(); await new Promise((resolve) => setTimeout(resolve, 160)); renderCities(); }
+      catch (error) { completeLoadingProgress(); console.error('資料載入失敗：', error); show('error-view'); }
     }
-    document.querySelectorAll('[data-back]').forEach((el) => el.addEventListener('click', () => el.dataset.back === 'city' ? renderCities() : renderDistricts(selectedCity)));
-    $('retry').addEventListener('click', load); load();
+    document.querySelectorAll('[data-back]').forEach((el) => el.addEventListener('click', () => { haptic(); el.dataset.back === 'city' ? renderCities() : renderDistricts(selectedCity); }));
+    $('retry').addEventListener('click', () => { haptic(); load(); }); load();
   </script>
 </body>
 </html>
